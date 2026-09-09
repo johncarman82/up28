@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAIN28 — Internal Cycle Tracker</title>
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --panel:#141414;
+    --panel-border:#262626;
+    --red:#e5484d;
+    --red-dim:#e5484d33;
+    --green:#3ecf8e;
+    --green-dim:#3ecf8e33;
+    --gold:#d4af37;
+    --text:#f2f2f0;
+    --text-dim:#8a8a86;
+    --text-dimmer:#5c5c58;
+    --mono: 'SF Mono', 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    padding:20px;
+    max-width:900px;
+    margin:0 auto;
+    line-height:1.4;
+  }
+  header{
+    text-align:center;
+    padding:24px 0 20px;
+    border-bottom:1px solid var(--panel-border);
+    margin-bottom:20px;
+  }
+  header h1{
+    font-size:1.5rem;
+    letter-spacing:0.02em;
+    font-weight:600;
+  }
+  header .sub{
+    color:var(--text-dim);
+    font-size:0.85rem;
+    margin-top:4px;
+  }
+
+  /* Day code banner */
+  .day-banner{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:20px 24px;
+    margin-bottom:24px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .day-banner .date-line{
+    font-size:0.85rem;
+    color:var(--text-dim);
+  }
+  .day-banner .math-line{
+    font-family:var(--mono);
+    font-size:0.78rem;
+    color:var(--text-dimmer);
+    margin-top:2px;
+  }
+  .day-code-badge{
+    font-size:2.4rem;
+    font-weight:700;
+    padding:6px 22px;
+    border-radius:8px;
+    line-height:1;
+  }
+  .code-7, .code-11{ color:var(--red); background:var(--red-dim); }
+  .code-28{ color:var(--green); background:var(--green-dim); }
+  .code-none{ color:var(--text-dimmer); background:#1c1c1c; font-size:1.1rem; }
+  .day-code-label{
+    font-size:0.7rem;
+    text-transform:none;
+    color:var(--text-dim);
+    margin-top:4px;
+    text-align:center;
+  }
+
+  nav.tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:20px;
+    border-bottom:1px solid var(--panel-border);
+  }
+  nav.tabs button{
+    background:none;
+    border:none;
+    color:var(--text-dim);
+    font-size:0.9rem;
+    padding:10px 16px;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  nav.tabs button.active{
+    color:var(--text);
+    border-bottom:2px solid var(--gold);
+  }
+
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  /* Entity cards */
+  .entity-card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:20px;
+    margin-bottom:18px;
+  }
+  .tag-row{
+    display:flex;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .tag-row .left, .tag-row .right{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    align-items:flex-start;
+  }
+  .tag-row .right{ align-items:flex-end; }
+  .tag{
+    font-size:0.68rem;
+    font-weight:600;
+    padding:5px 10px;
+    border-radius:5px;
+    white-space:nowrap;
+  }
+  .tag.short{ color:var(--red); background:var(--red-dim); }
+  .tag.long{ color:var(--green); background:var(--green-dim); }
+  .tag.chop{ color:#e8c547; background:#e8c54722; }
+  .tag.neutral{ color:var(--gold); background:#d4af3722; }
+
+  .bias-panel{
+    border:1px solid var(--panel-border);
+    border-radius:8px;
+    padding:22px 16px;
+    margin-bottom:16px;
+    text-align:center;
+  }
+  .bias-word{
+    font-size:1.8rem;
+    font-weight:700;
+    letter-spacing:0.03em;
+  }
+  .bias-reason{
+    font-size:0.75rem;
+    color:var(--text-dim);
+    margin-top:4px;
+  }
+  .bias-score{
+    font-size:0.68rem;
+    color:var(--text-dimmer);
+    margin-top:6px;
+  }
+  .bias-bearish{ background:var(--red-dim); border-color:var(--red); }
+  .bias-bearish .bias-word{ color:var(--red); }
+  .bias-bullish{ background:var(--green-dim); border-color:var(--green); }
+  .bias-bullish .bias-word{ color:var(--green); }
+  .bias-neutral{ background:#e8c54722; border-color:#e8c547; }
+  .bias-neutral .bias-word{ color:#e8c547; }
+  .ticker-notes{
+    width:100%;
+    min-height:50px;
+    background:#0f0f0f;
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:0.8rem;
+    padding:8px 10px;
+    margin-bottom:16px;
+    resize:vertical;
+    font-family:var(--sans);
+  }
+  .ticker-notes:focus{ outline:none; border-color:var(--gold); }
+
+  .entity-name{
+    font-size:1.3rem;
+    font-weight:700;
+    margin-bottom:2px;
+  }
+  .entity-sub{
+    color:var(--text-dim);
+    font-size:0.85rem;
+    margin-bottom:16px;
+  }
+
+  .datapoints{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:10px;
+  }
+  .datapoint{
+    border:1px solid var(--panel-border);
+    border-radius:8px;
+    padding:12px;
+  }
+  .datapoint .dp-label{
+    font-size:0.7rem;
+    color:var(--text-dim);
+    margin-bottom:6px;
+  }
+  .datapoint .dp-number{
+    font-size:1.8rem;
+    font-weight:700;
+  }
+  .datapoint .dp-date{
+    font-size:0.68rem;
+    color:var(--text-dimmer);
+    margin-top:6px;
+  }
+  .datapoint .dp-sub{
+    font-size:0.65rem;
+    color:var(--text-dimmer);
+    margin-top:2px;
+  }
+
+  /* Calendar */
+  .cal-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .cal-header button{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    color:var(--text);
+    font-size:1rem;
+    padding:8px 14px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .cal-header button:hover{ border-color:var(--gold); }
+  .cal-title{ font-size:1.1rem; font-weight:600; }
+
+  .cal-grid{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    gap:4px;
+    margin-bottom:28px;
+  }
+  .cal-dow{
+    text-align:center;
+    font-size:0.68rem;
+    color:var(--text-dimmer);
+    padding:4px 0;
+  }
+  .cal-cell{
+    aspect-ratio:1;
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    padding:4px;
+    position:relative;
+    font-size:0.72rem;
+    color:var(--text-dim);
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+  }
+  .cal-cell.empty{ border:none; }
+  .cal-cell .cal-daynum{ font-size:0.72rem; }
+  .cal-cell .cal-code{
+    align-self:center;
+    font-weight:700;
+    font-size:1rem;
+  }
+  .cal-cell.code-7 .cal-code, .cal-cell.code-11 .cal-code{ color:var(--red); }
+  .cal-cell.code-28 .cal-code{ color:var(--green); }
+  .cal-cell.code-7, .cal-cell.code-11{ background:var(--red-dim); border-color:var(--red); }
+  .cal-cell.code-28{ background:var(--green-dim); border-color:var(--green); }
+  .cal-cell.today{ outline:2px solid var(--gold); }
+
+  .legend{
+    display:flex;
+    gap:16px;
+    font-size:0.75rem;
+    color:var(--text-dim);
+    flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .legend span{ display:flex; align-items:center; gap:6px; }
+  .legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+
+  .note{
+    font-size:0.75rem;
+    color:var(--text-dimmer);
+    padding:14px;
+    border:1px solid var(--panel-border);
+    border-radius:8px;
+    margin-top:20px;
+  }
+
+  footer{
+    text-align:center;
+    color:var(--text-dimmer);
+    font-size:0.7rem;
+    padding:24px 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GAIN28</h1>
+  <div class="sub">Internal cycle tracker — private use only</div>
+</header>
+
+<div class="day-banner" id="dayBanner"></div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-view="entities">Profiles</button>
+  <button class="tab-btn" data-view="calendar">Calendar</button>
+</nav>
+
+<div id="searchBarWrap" style="margin-bottom:18px;">
+  <input id="searchInput" type="text" placeholder="Input ticker symbol here..."
+    style="width:100%; padding:12px 14px; background:var(--panel); border:1px solid var(--panel-border);
+    border-radius:8px; color:var(--text); font-size:0.9rem; outline:none;">
+</div>
+
+<div id="entitiesView" class="view active"></div>
+<div id="calendarView" class="view"></div>
+
+
+
+<footer>Built for internal use · not for public distribution</footer>
+
+<script>
+/* ---------- NUMEROLOGY ENGINE ---------- */
+
+// Sum all digits of a date given as {m, d, y}. Returns raw sum before any reduction.
+function rawDigitSum(m, d, y) {
+  const str = String(m) + String(d) + String(y);
+  return str.split('').reduce((acc, ch) => acc + Number(ch), 0);
+}
+
+// Reduce a number to a single digit, but stop early on master numbers 11, 22, 33 —
+// and also on 28, the "wealth number", which per Johnny's transcripts is a fixed
+// checkpoint value, not something that gets reduced further.
+// Special rule: a raw sum of exactly 20 is treated as an 11-day (hidden 11).
+function reduceNumerology(rawSum) {
+  if (rawSum === 20) return { value: 11, path: [rawSum, 11], hidden: true };
+  let n = rawSum;
+  const path = [n];
+  while (n > 9 && n !== 11 && n !== 22 && n !== 28 && n !== 33) {
+    n = String(n).split('').reduce((a, c) => a + Number(c), 0);
+    path.push(n);
+  }
+  return { value: n, path, hidden: false };
+}
+
+// Used for the global day-code banner + calendar: full date digit sum (month + day + full year).
+function numerologyForDate(m, d, y) {
+  const raw = rawDigitSum(m, d, y);
+  const result = reduceNumerology(raw);
+  return { number: result.value, raw, path: result.path, hidden: result.hidden };
+}
+
+// Used for entity Company/IPO/CEO "cycle" numbers: this is a PERSONAL-YEAR-STYLE calculation.
+// Confirmed against the reference app's own numbers (Meta, Sep 2026):
+//   CEO (May 14) in 2026:     5 + (1+4) + (2+0+2+6) = 20 -> hidden 11  == "CEO 11 CYCLE"
+//   Company (Feb 4) in 2026:  2 + 4     + (2+0+2+6) = 16 -> 7          == "COMPANY 7 CYCLE"
+//   IPO (May 18) in 2026:     5 + (1+8) + (2+0+2+6) = 24 -> 6          == "6" IPO number
+// Note: the record's own YEAR (birth year / founding year / IPO year) is NOT used here at all —
+// only its month + day, combined with the CURRENT calendar year. That's why it's a "cycle":
+// it changes every year, unlike a fixed life-path number.
+function cycleNumberForRecord(m, d, referenceYear) {
+  const monthDigits = String(m).split('').reduce((a, c) => a + Number(c), 0);
+  const dayDigits = String(d).split('').reduce((a, c) => a + Number(c), 0);
+  const yearDigits = String(referenceYear).split('').reduce((a, c) => a + Number(c), 0);
+  const raw = monthDigits + dayDigits + yearDigits;
+  const result = reduceNumerology(raw);
+  return { number: result.value, raw, path: result.path, hidden: result.hidden };
+}
+
+function dayCodeFromNumber(n) {
+  if (n === 7) return 7;
+  if (n === 11) return 11;
+  if (n === 28) return 28; // theoretical — 28 never actually surfaces from single-date digit sums, kept for completeness
+  return null;
+}
+
+// Life path number: fixed forever, calculated from the FULL birthdate (month + day + full year digits).
+// Unlike the cycle number, this never changes. Keeps master numbers 11/22/33 without reducing further.
+function lifePathNumber(m, d, y) {
+  const raw = rawDigitSum(m, d, y);
+  const result = reduceNumerology(raw);
+  return { number: result.value, raw };
+}
+
+/* ---------- VIETNAMESE ZODIAC ---------- */
+
+const ZODIAC_ORDER = ["Rat","Ox/Buffalo","Tiger","Rabbit/Cat","Dragon","Snake","Horse","Goat","Monkey","Rooster","Dog","Pig/Boar"];
+
+// Lunar New Year actually falls in late Jan/Feb, NOT Jan 1. Anyone born before that year's
+// Lunar New Year date is still counted in the PREVIOUS zodiac year. Table covers the years
+// we need (birth years of tracked CEOs/founders + current years for "this year's sign").
+// Source: published Vietnamese/Chinese lunar calendar new year dates.
+const LUNAR_NEW_YEAR = {
+  1960:"1960-01-28", 1961:"1961-02-15", 1964:"1964-02-13", 1968:"1968-01-30",
+  1975:"1975-02-11", 1984:"1984-02-02", 1994:"1994-02-10", 1997:"1997-02-07",
+  2004:"2004-01-22", 2011:"2011-02-03", 2012:"2012-01-23", 2020:"2020-01-25",
+  2021:"2021-02-12", 2022:"2022-02-01", 2023:"2023-01-22", 2024:"2024-02-10",
+  2025:"2025-01-29", 2026:"2026-02-17"
+};
+// Base anchor: Lunar year starting 2020-01-25 is the Year of the Rat.
+function zodiacYearFor(m, d, y) {
+  const lny = LUNAR_NEW_YEAR[y];
+  let effectiveYear = y;
+  if (lny) {
+    const cutoff = new Date(lny);
+    const birth = new Date(y, m - 1, d);
+    if (birth < cutoff) effectiveYear = y - 1;
+  }
+  const idx = ((effectiveYear - 2020) % 12 + 12) % 12;
+  return ZODIAC_ORDER[idx];
+}
+
+// Enemy ("No Match") pairing directly from the compatibility grid provided
+const ENEMY_MAP = {
+  "Rat":"Horse", "Horse":"Rat",
+  "Ox/Buffalo":"Goat", "Goat":"Ox/Buffalo",
+  "Tiger":"Monkey", "Monkey":"Tiger",
+  "Rabbit/Cat":"Rooster", "Rooster":"Rabbit/Cat",
+  "Dragon":"Dog", "Dog":"Dragon",
+  "Snake":"Pig/Boar", "Pig/Boar":"Snake"
+};
+
+// GG33 (Gary "The Numbers Guy" Grinberg) enemy number pairs — ONLY the two pairs publicly
+// confirmed from GG33 material. 2, 5, 6, 7, 8 are intentionally left out since no reliable
+// GG33 source confirms their enemy relationships — do not guess these.
+const GG33_ENEMY_NUMBERS = { 1: 9, 9: 1, 3: 4, 4: 3 };
+const BEST_MATCH = {
+  "Rat": ["Rat","Dragon","Monkey"],
+  "Ox/Buffalo": ["Ox/Buffalo","Snake","Rooster"],
+  "Tiger": ["Tiger","Dog","Horse"],
+  "Rabbit/Cat": ["Rabbit/Cat","Pig/Boar","Goat"],
+  "Dragon": ["Dragon","Monkey","Rat"],
+  "Snake": ["Snake","Rooster","Ox/Buffalo"],
+  "Horse": ["Horse","Dog","Tiger"],
+  "Goat": ["Goat","Pig/Boar","Rabbit/Cat"],
+  "Monkey": ["Monkey","Dragon","Rat"],
+  "Rooster": ["Rooster","Snake","Ox/Buffalo"],
+  "Dog": ["Dog","Tiger","Horse"],
+  "Pig/Boar": ["Pig/Boar","Rabbit/Cat","Goat"]
+};
+
+function currentZodiacSign() {
+  const now = new Date();
+  return zodiacYearFor(now.getMonth() + 1, now.getDate(), now.getFullYear());
+}
+
+function isEnemyYear(birthM, birthD, birthY) {
+  const personSign = zodiacYearFor(birthM, birthD, birthY);
+  const thisYearSign = currentZodiacSign();
+  return ENEMY_MAP[personSign] === thisYearSign ? thisYearSign : null;
+}
+
+// The "universal year number" — just the current year's digits, reduced (master numbers kept).
+function universalYearNumber() {
+  const y = new Date().getFullYear();
+  const raw = String(y).split('').reduce((a, c) => a + Number(c), 0);
+  return reduceNumerology(raw).value;
+}
+
+// Combined bias: cycle numbers + zodiac relationship + GG33 life-path-vs-universal-year enemy check.
+// Whichever side (bullish/bearish) has more points wins; a tie is neutral.
+function calcBias(companyCycle, ceoCycle, ceoM, ceoD, ceoY) {
+  const ceoSign = zodiacYearFor(ceoM, ceoD, ceoY);
+  const thisYearSign = currentZodiacSign();
+  const ceoLifePath = lifePathNumber(ceoM, ceoD, ceoY).number;
+  const yearNum = universalYearNumber();
+
+  let bullPoints = 0, bearPoints = 0;
+  const bullReasons = [], bearReasons = [];
+
+  if (companyCycle === 28 || ceoCycle === 28) {
+    bullPoints++; bullReasons.push('cycle hit 28 (wealth number)');
+  }
+  if (ceoSign === thisYearSign) {
+    bullPoints++; bullReasons.push(`CEO's own sign (${ceoSign}) matches this year`);
+  }
+  if (BEST_MATCH[ceoSign] && BEST_MATCH[ceoSign].includes(thisYearSign) && ceoSign !== thisYearSign) {
+    bullPoints++; bullReasons.push(`${ceoSign} is a Best Match with this year's ${thisYearSign}`);
+  }
+
+  if (companyCycle === 7 || companyCycle === 11 || ceoCycle === 7 || ceoCycle === 11) {
+    bearPoints++; bearReasons.push('cycle hit 7 or 11');
+  }
+  if (ENEMY_MAP[ceoSign] === thisYearSign) {
+    bearPoints++; bearReasons.push(`${ceoSign} is the enemy sign of this year's ${thisYearSign}`);
+  }
+  if (GG33_ENEMY_NUMBERS[ceoLifePath] === yearNum) {
+    bearPoints++; bearReasons.push(`CEO life path ${ceoLifePath} is a GG33 enemy number of this year's ${yearNum}`);
+  }
+
+  let verdict = 'neutral', reasons = ['No cycle or zodiac edge either way'];
+  if (bullPoints > bearPoints) { verdict = 'bullish'; reasons = bullReasons; }
+  else if (bearPoints > bullPoints) { verdict = 'bearish'; reasons = bearReasons; }
+
+  return { verdict, reasons, bullPoints, bearPoints };
+}
+
+/* ---------- ENTITY DATA (only fully-verified entries) ---------- */
+
+const ENTITIES = [
+  {
+    name: "Mark Zuckerberg",
+    company: "Meta Platforms",
+    ticker: "META",
+    companyDOB: {m:2, d:4, y:2004},
+    ipoDOB: {m:5, d:18, y:2012},
+    ceoDOB: {m:5, d:14, y:1984},
+    ceoBirthYear: 1984,
+    source: "Company founding + IPO date: public record. CEO DOB: consistently corroborated across Wikipedia, Britannica, Biography.com."
+  },
+  {
+    name: "Andy Jassy",
+    company: "Amazon",
+    ticker: "AMZN",
+    companyDOB: {m:7, d:5, y:1994},
+    ipoDOB: {m:5, d:15, y:1997},
+    ceoDOB: {m:1, d:13, y:1968},
+    ceoBirthYear: 1968,
+    source: "Founded by Jeff Bezos July 5, 1994. IPO May 15, 1997. Current CEO since July 2021 is Andy Jassy, born Jan 13, 1968 (Wikipedia)."
+  },
+  {
+    name: "Elon Musk",
+    company: "Tesla",
+    ticker: "TSLA",
+    companyDOB: {m:7, d:1, y:2003},
+    ipoDOB: {m:6, d:29, y:2010},
+    ceoDOB: {m:6, d:28, y:1971},
+    ceoBirthYear: 1971,
+    source: "Incorporated as Tesla Motors July 1, 2003 (Wikipedia, SEC filings). IPO June 29, 2010. CEO since 2008, Elon Musk, born June 28, 1971 (Wikipedia, Britannica)."
+  },
+  {
+    name: "Jensen Huang",
+    company: "Nvidia",
+    ticker: "NVDA",
+    companyDOB: {m:4, d:5, y:1993},
+    ipoDOB: {m:1, d:22, y:1999},
+    ceoDOB: {m:2, d:17, y:1963},
+    ceoBirthYear: 1963,
+    source: "Founded April 5, 1993. IPO January 22, 1999. Founder/CEO since inception, Jensen Huang, born Feb 17, 1963 (Wikipedia, Britannica)."
+  },
+  {
+    name: "Satya Nadella",
+    company: "Microsoft",
+    ticker: "MSFT",
+    companyDOB: {m:4, d:4, y:1975},
+    ipoDOB: {m:3, d:13, y:1986},
+    ceoDOB: {m:8, d:19, y:1967},
+    ceoBirthYear: 1967,
+    source: "Founded April 4, 1975 by Bill Gates and Paul Allen. IPO March 13, 1986. Current CEO since Feb 2014, Satya Nadella, born Aug 19, 1967 (Wikipedia, Britannica)."
+  },
+  {
+    name: "Sundar Pichai",
+    company: "Alphabet",
+    ticker: "GOOGL",
+    companyDOB: {m:9, d:4, y:1998},
+    ipoDOB: {m:8, d:19, y:2004},
+    ceoDOB: {m:6, d:10, y:1972},
+    ceoBirthYear: 1972,
+    source: "Google founded Sept 4, 1998 by Larry Page and Sergey Brin. IPO Aug 19, 2004. Current CEO of Alphabet/Google since 2015/2019, Sundar Pichai, born June 10, 1972 (Wikipedia, Britannica)."
+  },
+  {
+    name: "Marc Benioff",
+    company: "Salesforce",
+    ticker: "CRM",
+    companyDOB: {m:3, d:8, y:1999},
+    ipoDOB: {m:6, d:23, y:2004},
+    ceoDOB: {m:9, d:25, y:1964},
+    ceoBirthYear: 1964,
+    source: "Founded March 8, 1999 by Marc Benioff and team. IPO June 23, 2004. Founder/CEO/Chairman Marc Benioff, born Sept 25, 1964 (Wikipedia)."
+  },
+  {
+    name: "Bill McDermott",
+    company: "ServiceNow",
+    ticker: "NOW",
+    companyDOB: {m:11, d:5, y:2003},
+    ipoDOB: {m:6, d:29, y:2012},
+    ceoDOB: {m:8, d:18, y:1961},
+    ceoBirthYear: 1961,
+    source: "Founded Nov 5, 2003 by Fred Luddy. IPO June 29, 2012. Current CEO since Nov 2019, Bill McDermott, born Aug 18, 1961 (Wikipedia)."
+  },
+  {
+    name: "Lisa Su",
+    company: "AMD",
+    ticker: "AMD",
+    companyDOB: {m:5, d:1, y:1969},
+    ipoDOB: {m:9, d:27, y:1972},
+    ceoDOB: {m:11, d:7, y:1969},
+    ceoBirthYear: 1969,
+    source: "Incorporated May 1, 1969 by Jerry Sanders and team. IPO Sept 27, 1972. Current CEO since Oct 2014, Lisa Su, born Nov 7, 1969 (Wikipedia)."
+  },
+  {
+    name: "Alex Karp",
+    company: "Palantir Technologies",
+    ticker: "PLTR",
+    companyDOB: {m:5, d:6, y:2003},
+    ipoDOB: {m:9, d:30, y:2020},
+    ceoDOB: {m:10, d:2, y:1967},
+    ceoBirthYear: 1967,
+    source: "Founded May 6, 2003. Direct listing on NYSE began trading Sept 30, 2020. Co-founder/CEO Alex Karp, born Oct 2, 1967 (Wikipedia, Britannica)."
+  },
+  {
+    name: "Evan Spiegel",
+    company: "Snap Inc.",
+    ticker: "SNAP",
+    companyDOB: {m:9, d:16, y:2011},
+    ipoDOB: {m:3, d:2, y:2017},
+    ceoDOB: {m:6, d:4, y:1990},
+    ceoBirthYear: 1990,
+    source: "Founded as Snapchat Inc. Sept 16, 2011. IPO trading began March 2, 2017. Co-founder/CEO Evan Spiegel, born June 4, 1990 (Wikipedia)."
+  }
+];
+
+/* ---------- RENDER: DAY BANNER ---------- */
+
+function renderDayBanner() {
+  const now = new Date();
+  const m = now.getMonth() + 1, d = now.getDate(), y = now.getFullYear();
+  const result = numerologyForDate(m, d, y);
+  const code = dayCodeFromNumber(result.number);
+
+  const dateStr = now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const mathStr = `${m} + ${d} + ${String(y).split('').join(' + ')} = ${result.raw}` +
+                  (result.hidden ? ` → treated as hidden 11` : (result.path.length > 1 ? ` → ${result.path.slice(1).join(' → ')}` : ``));
+
+  let badgeClass = 'code-none', badgeText = '—', label = 'No defined bias today';
+  if (code === 7) { badgeClass = 'code-7'; badgeText = '7'; label = 'Short bias day'; }
+  else if (code === 11) { badgeClass = 'code-11'; badgeText = '11'; label = 'Short bias day (emotional)'; }
+  else if (code === 28) { badgeClass = 'code-28'; badgeText = '28'; label = 'Long bias day'; }
+
+  document.getElementById('dayBanner').innerHTML = `
+    <div>
+      <div class="date-line">${dateStr}</div>
+      <div class="math-line">${mathStr}</div>
+    </div>
+    <div style="text-align:center;">
+      <div class="day-code-badge ${badgeClass}">${badgeText}</div>
+      <div class="day-code-label">${label}</div>
+    </div>
+  `;
+}
+
+/* ---------- RENDER: ENTITY PROFILES ---------- */
+
+function renderEntities(filterQuery) {
+  const container = document.getElementById('entitiesView');
+  container.innerHTML = '';
+
+  const q = (filterQuery || '').trim().toLowerCase();
+
+  if (!q) {
+    container.innerHTML = `<div class="note" style="text-align:center;">Type a ticker symbol or company/CEO name above to pull up a profile.</div>`;
+    return;
+  }
+
+  const filtered = ENTITIES.filter(e => {
+    return e.name.toLowerCase().includes(q) ||
+           e.company.toLowerCase().includes(q) ||
+           e.ticker.toLowerCase().includes(q);
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="note">No matching company, ticker, or CEO found.</div>`;
+    return;
+  }
+
+  const currentYear = new Date().getFullYear();
+
+  filtered.forEach(e => {
+    // Both the top tags AND the bottom boxes use the same dynamic CYCLE number
+    // (month+day of the record + current calendar year, reduced). Confirmed exact
+    // match to the reference app using Zuckerberg's card: Company 7, IPO 6, CEO 11.
+    const companyCycle = cycleNumberForRecord(e.companyDOB.m, e.companyDOB.d, currentYear).number;
+    const ipoCycle = cycleNumberForRecord(e.ipoDOB.m, e.ipoDOB.d, currentYear).number;
+    const ceoCycle = cycleNumberForRecord(e.ceoDOB.m, e.ceoDOB.d, currentYear).number;
+
+    const enemyYear = isEnemyYear(e.ceoDOB.m, e.ceoDOB.d, e.ceoDOB.y);
+    const bias = calcBias(companyCycle, ceoCycle, e.ceoDOB.m, e.ceoDOB.d, e.ceoDOB.y);
+
+    const tagsLeft = [];
+    if (bias.verdict === 'bearish') tagsLeft.push(`<span class="tag short">SHORT-FAVORED (YEARLY)</span>`);
+    if (bias.verdict === 'bullish') tagsLeft.push(`<span class="tag long">LONG-FAVORED (YEARLY)</span>`);
+    if (bias.verdict === 'neutral') tagsLeft.push(`<span class="tag chop">NEUTRAL (YEARLY)</span>`);
+
+    const tagsRight = [];
+    tagsRight.push(`<span class="tag neutral">COMPANY ${companyCycle} CYCLE</span>`);
+    tagsRight.push(`<span class="tag neutral">CEO ${ceoCycle} CYCLE</span>`);
+    if (enemyYear) tagsRight.push(`<span class="tag short">CEO ${enemyYear.toUpperCase()} ENEMY YEAR</span>`);
+
+    const fmt = (dp) => new Date(dp.y, dp.m - 1, dp.d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+
+    container.innerHTML += `
+      <div class="entity-card">
+        <div class="tag-row">
+          <div class="left">${tagsLeft.join('')}</div>
+          <div class="right">${tagsRight.join('')}</div>
+        </div>
+        <div class="bias-panel bias-${bias.verdict}">
+          <div class="bias-word">${bias.verdict === 'bullish' ? 'LONG-FAVORED' : bias.verdict === 'bearish' ? 'SHORT-FAVORED' : 'NEUTRAL'}</div>
+        </div>
+        <textarea class="ticker-notes" data-ticker="${e.ticker}" placeholder="Notes on ${e.ticker}... (saved in this browser only)"></textarea>
+        <div class="entity-name">${e.name}</div>
+        <div class="entity-sub">${e.company} · ${e.ticker}</div>
+        <div class="datapoints">
+          <div class="datapoint">
+            <div class="dp-label">Company</div>
+            <div class="dp-number">${companyCycle}</div>
+            <div class="dp-date">Company DOB</div>
+            <div class="dp-sub">${fmt(e.companyDOB)}</div>
+          </div>
+          <div class="datapoint">
+            <div class="dp-label">IPO</div>
+            <div class="dp-number">${ipoCycle}</div>
+            <div class="dp-date">IPO DOB</div>
+            <div class="dp-sub">${fmt(e.ipoDOB)}</div>
+          </div>
+          <div class="datapoint">
+            <div class="dp-label">CEO</div>
+            <div class="dp-number">${ceoCycle}</div>
+            <div class="dp-date">CEO DOB</div>
+            <div class="dp-sub">${fmt(e.ceoDOB)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  // Load saved notes and wire up auto-save
+  document.querySelectorAll('.ticker-notes').forEach(ta => {
+    const key = 'gain28_notes_' + ta.dataset.ticker;
+    ta.value = localStorage.getItem(key) || '';
+    ta.addEventListener('input', () => localStorage.setItem(key, ta.value));
+  });
+}
+
+/* ---------- RENDER: CALENDAR ---------- */
+
+let calMonthOffset = 0; // 0 = current month, up to 11 (full 12-month lookahead)
+
+function renderCalendar() {
+  const container = document.getElementById('calendarView');
+  const base = new Date();
+  const viewDate = new Date(base.getFullYear(), base.getMonth() + calMonthOffset, 1);
+  const year = viewDate.getFullYear(), month = viewDate.getMonth();
+
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = viewDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+
+  const todayStr = new Date().toDateString();
+
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const result = numerologyForDate(month + 1, day, year);
+    const code = dayCodeFromNumber(result.number);
+    const cellDate = new Date(year, month, day);
+    const isToday = cellDate.toDateString() === todayStr;
+    let codeClass = '';
+    let codeLabel = '';
+    if (code === 7) { codeClass = 'code-7'; codeLabel = '7'; }
+    else if (code === 11) { codeClass = 'code-11'; codeLabel = '11'; }
+    else if (code === 28) { codeClass = 'code-28'; codeLabel = '28'; }
+
+    cells += `
+      <div class="cal-cell ${codeClass} ${isToday ? 'today' : ''}">
+        <div class="cal-daynum">${day}</div>
+        <div class="cal-code">${codeLabel}</div>
+      </div>
+    `;
+  }
+
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+  container.innerHTML = `
+    <div class="cal-header">
+      <button id="calPrev">← Prev</button>
+      <div class="cal-title">${monthLabel}</div>
+      <button id="calNext">Next →</button>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--red)"></i> 7 / 11 day (short bias)</span>
+      <span><i style="background:var(--green)"></i> 28 day (long bias)</span>
+    </div>
+    <div class="cal-grid">
+      ${dows}
+      ${cells}
+    </div>
+  `;
+
+  document.getElementById('calPrev').onclick = () => {
+    if (calMonthOffset > 0) { calMonthOffset--; renderCalendar(); }
+  };
+  document.getElementById('calNext').onclick = () => {
+    if (calMonthOffset < 11) { calMonthOffset++; renderCalendar(); }
+  };
+}
+
+/* ---------- TABS ---------- */
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.view + 'View').classList.add('active');
+  });
+});
+
+/* ---------- INIT ---------- */
+
+renderDayBanner();
+renderEntities();
+renderCalendar();
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  renderEntities(e.target.value);
+});
+
+// Keep the day banner live without needing a refresh
+setInterval(renderDayBanner, 60 * 1000);
+</script>
+
+</body>
+</html>
